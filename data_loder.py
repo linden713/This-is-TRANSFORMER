@@ -4,12 +4,17 @@ import spacy
 import urllib.request
 from collections import defaultdict
 from torch.utils.data import Dataset, DataLoader
+import time
+import pickle
 
 def download_multi30k():
     """Download Multi30k dataset if not present"""
-    # Create data directory
-    if not os.path.exists('data'):
-        os.makedirs('data')
+    if os.path.exists('data/train.de') and os.path.exists('data/train.en'):
+        print("[Info] Data already exists, skipping download.")
+        return  # 文件已经存在，跳过下载
+
+    print("[Info] Downloading Multi30k dataset...")
+    os.makedirs('data', exist_ok=True)
 
     # Download files if they don't exist
     base_url = "https://raw.githubusercontent.com/multi30k/dataset/master/data/task1/raw/"
@@ -76,37 +81,60 @@ class TranslationDataset(Dataset):
             'tgt': torch.tensor(tgt_indices)
         }
 
-def build_vocab_from_texts(texts, tokenizer, min_freq=2):
-    """Build vocabulary from texts"""
+def build_vocab_from_texts(texts, tokenizer, min_freq=2, cache_path="data/vocab_src.pt"):
+    if cache_path and os.path.exists(cache_path):
+        print(f"[Info] Loading cached vocab from {cache_path}")
+        with open(cache_path, 'rb') as f:
+            return pickle.load(f)
+
+    print(f"[Info] Building vocab from scratch...")
     counter = {}
     for text in texts:
         for token in [tok.text for tok in tokenizer(text)]:
             counter[token] = counter.get(token, 0) + 1
 
-    # Create vocabulary
     vocab_dict = {"<s>": 0, "</s>": 1, "<blank>": 2, "<unk>": 3}
     idx = 4
     for word, freq in counter.items():
         if freq >= min_freq:
             vocab_dict[word] = idx
             idx += 1
-
-    vocab = defaultdict(lambda: vocab_dict["<unk>"])
+            
+    vocab = defaultdict(default_unk)
     vocab.update(vocab_dict)
+
+
+    if cache_path:
+        with open(cache_path, 'wb') as f:
+            pickle.dump(vocab, f)
+        print(f"[Info] Vocab saved to {cache_path}")
+
     return vocab
 
 def create_dataloaders(batch_size=32):
+    start_time = time.time()
+    print("[Step 1] Loading tokenizers...")
+    t0 = time.time()
     # Load tokenizers
     spacy_de = spacy.load("de_core_news_sm")
     spacy_en = spacy.load("en_core_web_sm")
+    print(f"  Done in {time.time() - t0:.2f}s")
 
+    print("[Step 2] Downloading + Loading dataset...")
+    t0 = time.time()
     # Get data
     (train_de, train_en), (val_de, val_en) = create_dataset()
+    print(f"  Done in {time.time() - t0:.2f}s")
 
+    print("[Step 3] Building vocabulary...")
+    t0 = time.time()
     # Build vocabularies
     vocab_src = build_vocab_from_texts(train_de, spacy_de)
     vocab_tgt = build_vocab_from_texts(train_en, spacy_en)
+    print(f"  Done in {time.time() - t0:.2f}s")
 
+    print("[Step 4] Building dataset + dataloader...")
+    t0 = time.time()
     # Create datasets
     train_dataset = TranslationDataset(
         train_de, train_en,
@@ -125,7 +153,8 @@ def create_dataloaders(batch_size=32):
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=collate_batch
+        collate_fn=collate_batch,
+        # num_workers=8
     )
 
     val_dataloader = DataLoader(
@@ -134,7 +163,9 @@ def create_dataloaders(batch_size=32):
         shuffle=False,
         collate_fn=collate_batch
     )
+    print(f"  Done in {time.time() - t0:.2f}s")
 
+    print(f"[Total Time] Dataloader ready in {time.time() - start_time:.2f}s")
     return train_dataloader, val_dataloader, vocab_src, vocab_tgt
 
 def collate_batch(batch):
@@ -149,3 +180,5 @@ def collate_batch(batch):
         'src': src_padded,
         'tgt': tgt_padded
     }
+def default_unk():
+    return 3  # index of <unk>

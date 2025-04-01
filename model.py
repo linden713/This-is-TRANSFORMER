@@ -57,28 +57,30 @@ class MultiHeadAttention(nn.Module):
         assert value.size(-1) == query.size(-1), f"value dim: {value.size(-1)} query dim: {query.size(-1)}"
         d_k = query.size(-1)
         
-        score = torch.matmul(query,key.transpose(-2,-1))/torch.sqrt(d_k)
+        score = torch.matmul(query,key.transpose(-2,-1))/math.sqrt(d_k)
         if mask is not None:
-            score = score.mask_fill(mask ==0, float('-inf'))
+            score = score.masked_fill(mask ==0, float('-inf'))
             
         attention_weight = softmax(score, dim =-1)
         return attention_weight.matmul(value)
     
     def forward(self, query, key, value, mask=None):
         batch_size = query.size(0)
-        sequence_len = query.size[1] 
+        seq_len_q = query.size(1)
+        seq_len_k = key.size(1)
+        seq_len_v = value.size(1)
         
         Q = self.W_q(query)
         K = self.W_k(key)
         V = self.W_v(value)
         
-        Q = Q.view(batch_size, sequence_len, self.num_heads, self.d_k).transpose(1, 2)  # (batch_size, num_heads, seq_len_q, d_k)
-        K = K.view(batch_size, sequence_len, self.num_heads, self.d_k).transpose(1, 2)  # (batch_size, num_heads, seq_len_k, d_k)
-        V = V.view(batch_size, sequence_len, self.num_heads, self.d_k).transpose(1, 2)  # (batch_size, num_heads, seq_len_v, d_k)
+        Q = Q.view(batch_size, seq_len_q, self.num_heads, self.d_k).transpose(1, 2)  # (batch_size, num_heads, seq_len_q, d_k)
+        K = K.view(batch_size, seq_len_k, self.num_heads, self.d_k).transpose(1, 2)  # (batch_size, num_heads, seq_len_k, d_k)
+        V = V.view(batch_size, seq_len_v, self.num_heads, self.d_k).transpose(1, 2)  # (batch_size, num_heads, seq_len_v, d_k)
         
         attention_weight = self.scaled_dot_product_attention(Q, K, V, mask)
 
-        output = attention_weight.transpose(1,2).contiguous().view(batch_size, sequence_len, self.d_model)
+        output = attention_weight.transpose(1,2).contiguous().view(batch_size, seq_len_q, self.d_model)
         
         return self.W_o(output)
     

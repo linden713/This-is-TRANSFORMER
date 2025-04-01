@@ -37,14 +37,14 @@ def train_transformer(model, train_dataloader, criterion, optimizer, scheduler, 
             
             optimizer.zero_grad()
             
-            outputs = model(src, tgt_input, src_mask, tgt_mask)
+            outputs = model(src, tgt_input)
             outputs = outputs.view(-1, outputs.size(-1))
             
             loss = criterion(outputs, tgt_output)
             
             loss.backward()
             
-            torch.nn.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             
             optimizer.step()
             scheduler.step(step_num=epoch + 1) 
@@ -57,17 +57,19 @@ def train_transformer(model, train_dataloader, criterion, optimizer, scheduler, 
         print(f"Epoch {epoch + 1} Loss: {avg_epoch_loss:.4f}")
 
         # Save checkpoint
-        torch.save({
-            'epoch': epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': avg_epoch_loss,
-        }, f'checkpoint_epoch_{epoch+1}.pt')
+        if (epoch + 1) % 10 == 0:
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': avg_epoch_loss,
+            }, f'checkpoint_epoch_{epoch+1}.pt')
 
     return all_losses
 def main():          
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+    print(f"Using device: {device}")
+
     train_dataloader, _, vocab_src, vocab_tgt = create_dataloaders(batch_size=32)
 
     model = Transformer(

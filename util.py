@@ -67,7 +67,7 @@ class TransformerLRScheduler:
         """
 
         # lrate = d_model^(-0.5) * min(step_num^(-0.5), step_num * warmup_steps^(-1.5))
-        learning_rate = self.d_model ** -.5 * torch.min(step_num**-.5, step_num * self.warmup_steps**(-1.5))
+        learning_rate = self.d_model ** -0.5 * min(step_num ** -0.5, step_num * self.warmup_steps ** -1.5)
         for group in self.optimizer.param_groups:
             group['lr'] = learning_rate
 
@@ -84,7 +84,9 @@ class LabelSmoothing(nn.Module):
             logits: Model predictions (batch_size, vocab_size) #each row of vocab_size contains probability score of each label
             target: True labels (batch_size) #each row of batch size contains the index to the correct label
         """
-        vocab_size = logits.vocab_size(-1)
+        # vocab_size = logits.vocab_size(-1)
+        vocab_size = logits.size(-1)
+
         with torch.no_grad():
             true_dist = torch.zeros_like(logits)
             true_dist.fill_(self.smoothing / (vocab_size - 1))
